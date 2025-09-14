@@ -9,9 +9,11 @@ import (
 type Variant string
 
 const (
-	VarVideo360 Variant = "video360"
-	VarVideo720 Variant = "video720"
-	VarAudioMP3 Variant = "audioMp3"
+    VarVideo360 Variant = "video360"
+    VarVideo720 Variant = "video720"
+    VarVideo1080 Variant = "video1080"
+    VarVideo1440 Variant = "video1440"
+    VarAudioMP3 Variant = "audioMp3"
 )
 
 // Job — задача на загрузку

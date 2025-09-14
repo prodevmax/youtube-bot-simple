@@ -165,12 +165,15 @@ func extractYouTubeURL(s string) string {
 }
 
 func buildKeyboard(token string) tgbotapi.InlineKeyboardMarkup {
-	b1 := tgbotapi.NewInlineKeyboardButtonData("Видео 360p", fmt.Sprintf("t=%s;v=360", token))
-	b2 := tgbotapi.NewInlineKeyboardButtonData("Видео 720p", fmt.Sprintf("t=%s;v=720", token))
-	b3 := tgbotapi.NewInlineKeyboardButtonData("Аудио MP3", fmt.Sprintf("t=%s;v=mp3", token))
-	row1 := tgbotapi.NewInlineKeyboardRow(b1, b2)
-	row2 := tgbotapi.NewInlineKeyboardRow(b3)
-	return tgbotapi.NewInlineKeyboardMarkup(row1, row2)
+    b1 := tgbotapi.NewInlineKeyboardButtonData("Видео 360p", fmt.Sprintf("t=%s;v=360", token))
+    b2 := tgbotapi.NewInlineKeyboardButtonData("HD 720p", fmt.Sprintf("t=%s;v=720", token))
+    b3 := tgbotapi.NewInlineKeyboardButtonData("Full HD 1080p", fmt.Sprintf("t=%s;v=1080", token))
+    b4 := tgbotapi.NewInlineKeyboardButtonData("2K 1440p", fmt.Sprintf("t=%s;v=1440", token))
+    b5 := tgbotapi.NewInlineKeyboardButtonData("Аудио MP3", fmt.Sprintf("t=%s;v=mp3", token))
+    row1 := tgbotapi.NewInlineKeyboardRow(b1, b2)
+    row2 := tgbotapi.NewInlineKeyboardRow(b3, b4)
+    row3 := tgbotapi.NewInlineKeyboardRow(b5)
+    return tgbotapi.NewInlineKeyboardMarkup(row1, row2, row3)
 }
 
 func parseCallbackData(data string) (token, variant string) {
@@ -184,27 +187,35 @@ func parseCallbackData(data string) (token, variant string) {
 }
 
 func toVariant(v string) queue.Variant {
-	switch v {
-	case "360":
-		return queue.VarVideo360
-	case "720":
-		return queue.VarVideo720
-	case "mp3":
-		return queue.VarAudioMP3
-	default:
-		return queue.VarVideo360
-	}
+    switch v {
+    case "360":
+        return queue.VarVideo360
+    case "720":
+        return queue.VarVideo720
+    case "1080":
+        return queue.VarVideo1080
+    case "1440":
+        return queue.VarVideo1440
+    case "mp3":
+        return queue.VarAudioMP3
+    default:
+        return queue.VarVideo360
+    }
 }
 
 func humanVariant(v queue.Variant) string {
-	switch v {
-	case queue.VarVideo360:
-		return "Видео 360p"
-	case queue.VarVideo720:
-		return "Видео 720p"
-	case queue.VarAudioMP3:
-		return "Аудио MP3"
-	default:
-		return string(v)
-	}
+    switch v {
+    case queue.VarVideo360:
+        return "Видео 360p"
+    case queue.VarVideo720:
+        return "HD 720p"
+    case queue.VarVideo1080:
+        return "Full HD 1080p"
+    case queue.VarVideo1440:
+        return "2K 1440p"
+    case queue.VarAudioMP3:
+        return "Аудио MP3"
+    default:
+        return string(v)
+    }
 }
