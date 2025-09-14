@@ -5,7 +5,7 @@
 
 Цель — дать разработчику и инструментам (агентам) компактную картину текущего состояния, отличий и дорожной карты.
 
-## 1) Упрощённый проект: youtube-bot-simple
+## 1) youtube-bot-simple
 
 ### Функциональность (MVP)
 - Принимает ссылку на YouTube (включая Shorts) в личных сообщениях.
@@ -51,7 +51,7 @@
 - `YTDLP_PATH`, `FFMPEG_PATH` — явные пути (опционально).
 
 ### Зависимости
-- Go 1.21+
+- Go 1.23+
 - `github.com/go-telegram-bot-api/telegram-bot-api/v5`
 - В системе установлены `yt-dlp` и `ffmpeg` (в `$PATH` или по указанным путям).
 
@@ -144,3 +144,59 @@
 
 
 Этот файл предназначен для быстрого ориентирования по проектам и как справочник для разработчиков/агентов.
+
+## Тестирование
+
+- Как запустить все тесты:
+  - `make test` — запускает `go test ./...`. Перед этим очищается кэш (`-cache`, `-testcache`, `-modcache`).
+
+- Где лежат тесты и что они покрывают:
+  - Интеграционный: `internal/telegram/bot_integration_test.go:1`
+    - Проверяет связку: сообщение с YouTube‑ссылкой → клавиатура → callback → очередь → воркер → отправка файла.
+    - Используются заглушки без сети: `fakeAPI` (эмуляция Telegram `Send/Request`) и `fakeRunner` (эмуляция `yt-dlp`, создаёт маленький файл во временной папке).
+    - Не требует реального `TELEGRAM_TOKEN`, сети или `yt-dlp`/`ffmpeg`.
+  - Юнит‑тесты: `internal/telegram/bot_unit_test.go:1`
+    - `extractYouTubeURL`, `parseCallbackData`, а также `toVariant` и `humanVariant`.
+
+- Как запустить конкретный пакет/тест:
+  - Пакет Telegram: `go test ./internal/telegram`
+  - По имени: `go test ./internal/telegram -run TestTelegramFlow`
+
+- Интерфейсы для тестируемости:
+  - `internal/telegram/api.go:1` — `Sender` (минимум Telegram API: `Send`, `Request`, `GetUpdatesChan`) и `Downloader` (`Download(ctx, url, variant)`).
+  - Продакшн код использует реальные реализации: `*tgbotapi.BotAPI` удовлетворяет `Sender`, `downloader.Runner` — `Downloader`.
+  - Бот принимает интерфейсы: `internal/telegram/bot.go:1` (`NewBot(api Sender, ..., dl Downloader)`).
+
+- Типичные проблемы с тулчейном Go и их решение:
+  - Симптом: `compile: version "go1.23.6" does not match go tool version "go1.23.12"`.
+  - Решение (очистка кэшей и фиксация локального тулчейна):
+    - `go clean -cache -testcache -modcache`
+    - `rm -rf "$(go env GOCACHE)"`
+    - `rm -rf "$(go env GOPATH)/pkg/mod/golang.org/toolchain"*`
+    - Запуск с локальным тулчейном: `GOTOOLCHAIN=local go test ./...`
+  - Удобная цель: `Makefile:1` — `run-clean` чистит кэши и запускает бота с `GOTOOLCHAIN=local`.
+
+- Полезные флаги:
+  - Гонки: `go test -race ./internal/telegram`
+  - Профиль покрытия (для пакета): `go test -cover ./internal/telegram`
+
+### Локальный запуск интеграционного теста с логами
+- Запуск только интеграционного теста в verbose-режиме:
+  - `go test ./internal/telegram -run TestTelegramFlow -v -count=1`
+  - Логи из `log.Printf` внутри кода видны в `-v` режиме.
+- Отфильтровать логи бота:
+  - macOS/Linux: `go test ./internal/telegram -run TestTelegramFlow -v | sed -n '/\[bot\]/p'`
+- Полезные флаги при отладке:
+  - `-race` — поиск data race в очереди/хранилище: `go test ./internal/telegram -run TestTelegramFlow -v -race -count=1`
+  - `-count=1` — отключить кэш тестов при повторных запусках.
+
+### Отладка очереди и воркеров
+- Где код очереди: `internal/queue/queue.go:1`
+- Где воркер: `internal/telegram/bot.go:1` метод `Worker` (выбор способа отправки по варианту/расширению).
+- Изменение параллельности в тесте:
+  - В интеграционном тесте `internal/telegram/bot_integration_test.go:1` очередь создаётся как `queue.NewQueue(10, 1)`. Для проверки конкурентности можно временно поднять воркеров до `2+` и добавить несколько callback'ов подряд.
+- Диагностика зависаний:
+  - Убедитесь, что потребляете все сообщения из `fakeAPI.calls` (см. функции ожидания в `bot_integration_test.go`). Добавляйте разумные таймауты `time.After(...)`.
+  - Для детального трейсинга добавляйте временные `log.Printf("[queue] ...")` точки в `Queue.Start` и в начале/конце `Worker`.
+- Проверка лимита размера:
+  - Для проверки ветки «слишком большой файл» можно временно модифицировать `fakeRunner.Download` так, чтобы он возвращал `size` больше `cfg.MaxFileMB*1024*1024` и ожидать `MessageConfig` с текстом про превышение лимита.

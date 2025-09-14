@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"youtube-bot-simple/internal/config"
-	"youtube-bot-simple/internal/downloader"
 	"youtube-bot-simple/internal/files"
 	"youtube-bot-simple/internal/queue"
 	"youtube-bot-simple/internal/state"
@@ -20,14 +19,14 @@ import (
 // Bot — минимальный Telegram-бот
 
 type Bot struct {
-	api   *tgbotapi.BotAPI
+	api   Sender
 	cfg   *config.Config
 	store *state.Store
 	q     *queue.Queue
-	DL    *downloader.Runner
+	DL    Downloader
 }
 
-func NewBot(api *tgbotapi.BotAPI, cfg *config.Config, st *state.Store, q *queue.Queue, dl *downloader.Runner) *Bot {
+func NewBot(api Sender, cfg *config.Config, st *state.Store, q *queue.Queue, dl Downloader) *Bot {
 	return &Bot{api: api, cfg: cfg, store: st, q: q, DL: dl}
 }
 
@@ -55,11 +54,13 @@ func (b *Bot) Start(ctx context.Context) error {
 
 func (b *Bot) handleMessage(ctx context.Context, m *tgbotapi.Message) {
 	text := strings.TrimSpace(m.Text)
-	if text == "" { return }
+	if text == "" {
+		return
+	}
 
 	switch {
 	case strings.HasPrefix(text, "/start"):
-		b.reply(m.Chat.ID, "Привет! Пришлите ссылку на YouTube, затем выберите вариант (360p/720p/MP3).", 0)
+		b.reply(m.Chat.ID, "Привет! Пришлите ссылку на YouTube, затем выберите вариант (360p/720p/1080p/1440p/MP3).", 0)
 		return
 	case strings.HasPrefix(text, "/help"):
 		b.reply(m.Chat.ID, "Скидывайте ссылку на видео YouTube или Shorts. После выбора варианта бот скачает и пришлёт файл. Ограничение по размеру ~50 МБ.", 0)
@@ -111,7 +112,9 @@ func (b *Bot) handleCallback(ctx context.Context, c *tgbotapi.CallbackQuery) {
 
 func (b *Bot) reply(chatID int64, text string, replyTo int) {
 	msg := tgbotapi.NewMessage(chatID, text)
-	if replyTo > 0 { msg.ReplyToMessageID = replyTo }
+	if replyTo > 0 {
+		msg.ReplyToMessageID = replyTo
+	}
 	if _, err := b.api.Send(msg); err != nil {
 		log.Printf("[bot] send message failed: %v", err)
 	}
@@ -165,57 +168,61 @@ func extractYouTubeURL(s string) string {
 }
 
 func buildKeyboard(token string) tgbotapi.InlineKeyboardMarkup {
-    b1 := tgbotapi.NewInlineKeyboardButtonData("Видео 360p", fmt.Sprintf("t=%s;v=360", token))
-    b2 := tgbotapi.NewInlineKeyboardButtonData("HD 720p", fmt.Sprintf("t=%s;v=720", token))
-    b3 := tgbotapi.NewInlineKeyboardButtonData("Full HD 1080p", fmt.Sprintf("t=%s;v=1080", token))
-    b4 := tgbotapi.NewInlineKeyboardButtonData("2K 1440p", fmt.Sprintf("t=%s;v=1440", token))
-    b5 := tgbotapi.NewInlineKeyboardButtonData("Аудио MP3", fmt.Sprintf("t=%s;v=mp3", token))
-    row1 := tgbotapi.NewInlineKeyboardRow(b1, b2)
-    row2 := tgbotapi.NewInlineKeyboardRow(b3, b4)
-    row3 := tgbotapi.NewInlineKeyboardRow(b5)
-    return tgbotapi.NewInlineKeyboardMarkup(row1, row2, row3)
+	b1 := tgbotapi.NewInlineKeyboardButtonData("Видео 360p", fmt.Sprintf("t=%s;v=360", token))
+	b2 := tgbotapi.NewInlineKeyboardButtonData("HD 720p", fmt.Sprintf("t=%s;v=720", token))
+	b3 := tgbotapi.NewInlineKeyboardButtonData("Full HD 1080p", fmt.Sprintf("t=%s;v=1080", token))
+	b4 := tgbotapi.NewInlineKeyboardButtonData("2K 1440p", fmt.Sprintf("t=%s;v=1440", token))
+	b5 := tgbotapi.NewInlineKeyboardButtonData("Аудио MP3", fmt.Sprintf("t=%s;v=mp3", token))
+	row1 := tgbotapi.NewInlineKeyboardRow(b1, b2)
+	row2 := tgbotapi.NewInlineKeyboardRow(b3, b4)
+	row3 := tgbotapi.NewInlineKeyboardRow(b5)
+	return tgbotapi.NewInlineKeyboardMarkup(row1, row2, row3)
 }
 
 func parseCallbackData(data string) (token, variant string) {
 	// формат: t=<token>;v=360|720|mp3
 	parts := strings.Split(data, ";")
 	for _, p := range parts {
-		if strings.HasPrefix(p, "t=") { token = strings.TrimPrefix(p, "t=") }
-		if strings.HasPrefix(p, "v=") { variant = strings.TrimPrefix(p, "v=") }
+		if strings.HasPrefix(p, "t=") {
+			token = strings.TrimPrefix(p, "t=")
+		}
+		if strings.HasPrefix(p, "v=") {
+			variant = strings.TrimPrefix(p, "v=")
+		}
 	}
 	return
 }
 
 func toVariant(v string) queue.Variant {
-    switch v {
-    case "360":
-        return queue.VarVideo360
-    case "720":
-        return queue.VarVideo720
-    case "1080":
-        return queue.VarVideo1080
-    case "1440":
-        return queue.VarVideo1440
-    case "mp3":
-        return queue.VarAudioMP3
-    default:
-        return queue.VarVideo360
-    }
+	switch v {
+	case "360":
+		return queue.VarVideo360
+	case "720":
+		return queue.VarVideo720
+	case "1080":
+		return queue.VarVideo1080
+	case "1440":
+		return queue.VarVideo1440
+	case "mp3":
+		return queue.VarAudioMP3
+	default:
+		return queue.VarVideo360
+	}
 }
 
 func humanVariant(v queue.Variant) string {
-    switch v {
-    case queue.VarVideo360:
-        return "Видео 360p"
-    case queue.VarVideo720:
-        return "HD 720p"
-    case queue.VarVideo1080:
-        return "Full HD 1080p"
-    case queue.VarVideo1440:
-        return "2K 1440p"
-    case queue.VarAudioMP3:
-        return "Аудио MP3"
-    default:
-        return string(v)
-    }
+	switch v {
+	case queue.VarVideo360:
+		return "Видео 360p"
+	case queue.VarVideo720:
+		return "HD 720p"
+	case queue.VarVideo1080:
+		return "Full HD 1080p"
+	case queue.VarVideo1440:
+		return "2K 1440p"
+	case queue.VarAudioMP3:
+		return "Аудио MP3"
+	default:
+		return string(v)
+	}
 }
